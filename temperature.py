@@ -6,8 +6,8 @@ def filter_points(xx, yy, x_min, x_max):
     """Select points where between x_min <= x <= x_max"""
     temp = list(map(list, zip(*filter(lambda t: x_min <= t[0] <= x_max, zip(xx, yy)))))
     return temp if temp else ([], [])
-    
-    
+
+
 def eff_temperature(x, y, x_range=None, method="fit"):
     """
     Find an effective temperature of data points, possibly in a given range.
@@ -31,7 +31,7 @@ def eff_temperature(x, y, x_range=None, method="fit"):
     else:
         raise ValueError("Unknown method: %s" % method)
 
-        
+
 def eff_temperature_list(xx, yy, x_window, method="fit"):
     """
     Find points describing the effective temperature funtion using a certain window.
@@ -39,7 +39,8 @@ def eff_temperature_list(xx, yy, x_window, method="fit"):
     Args:
         x: x-coordinates of the points.
         y: y-coordinates of the points.
-        x_window: Half-size of the window used in each fit
+        x_window (float or Callable): Half-size of the window used in each fit. It can be a Callable taking the window
+                                      mean point and returning the halfsize.
         method: The method used to calculate the temperature. Available methods include:
             *"fit": Best linear fit
 
@@ -49,16 +50,31 @@ def eff_temperature_list(xx, yy, x_window, method="fit"):
     x_min = min(xx)
     x_max = max(xx)
     if method == "fit":
-        xx2=[]
-        tt=[]
-        for x in xx:
-            if x-x_window >= x_min and x+x_window<= x_max:
-                xx2.append(x)
-                tt.append(eff_temperature_fit(*filter_points(xx,yy,x-x_window,x+x_window)))
+        xx2 = []
+        tt = []
+        if isinstance(x_window, float) or isinstance(x_window, int):
+            for x in xx:
+                if x - x_window >= x_min and x + x_window <= x_max:
+                    xx2.append(x)
+                    tt.append(eff_temperature_fit(*filter_points(xx, yy, x - x_window, x + x_window)))
+        else:  # Assumed callable
+            for x in xx:
+                window = x_window(x)
+                if x - window >= x_min and x + window <= x_max:
+                    xx2.append(x)
+                    tt.append(eff_temperature_fit(*filter_points(xx, yy, x - window, x + window)))
         return xx2, tt
 
     else:
         raise ValueError("Unknown method: %s" % method)
+
+
+def linear_function(x0, y0, x1, y1):
+    """returns a linear function given two points"""
+    a = (y0 - y1) / (x0 - x1)
+    b = y0 - a * x0
+    return lambda x: a * x + b
+
 
 def eff_temperature_fit(x, y):
     """Numerically find an effective temperature in the whole range given"""
