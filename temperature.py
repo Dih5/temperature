@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import linregress
+from scipy.special import gamma, gammainc, expi
 
 
 def filter_points(xx, yy, x_min, x_max):
@@ -34,7 +35,7 @@ def eff_temperature(x, y, x_range=None, method="fit"):
 
 def eff_temperature_list(xx, yy, x_window, method="fit"):
     """
-    Find points describing the effective temperature funtion using a certain window.
+    Find points describing the effective temperature function using a certain window.
 
     Args:
         x: x-coordinates of the points.
@@ -94,3 +95,61 @@ def finite_temperature_sym_dif_list(x, y, i=2):
     log_y = np.log(np.array(y))
     x = np.array(x)
     return np.array(x[i // 2:-i // 2]), -(x[i:] - x[:-i]) / (log_y[i:] - log_y[:-i])
+
+
+def mb_temp(theta, e, alpha=1.5):
+    """Effective temperature in a Maxwellian (Gamma) distribution"""
+    scaled = e / theta
+    return (scaled / (scaled + (alpha - 1))) * theta
+
+
+def _incomplete_gamma(a, x):
+    """Incomplete gamma function (not normalized, integral from x to infinity). Only implemented for real x>0"""
+    if x < 0:
+        raise NotImplementedError("This incomplete gamma is not implemented for x<=0")
+    if a:  # not 0
+        return gamma(a) * (1 - gammainc(a, x))
+    else:
+        # Gamma(0) diverges and indeterminate form appears, but can be reworked from definition
+        return -expi(-x)  # Assuming x>0
+
+
+def mb_bremss(theta, e_g, alpha=1.5, b=1.0):
+    """Maxwellian-electron produced bremsstrahlung distribution, according to a linear model of the scaled
+    bremsstrahlung cross-section"""
+    scaled = e_g / theta
+    return (theta * _incomplete_gamma(alpha, scaled) - b * e_g * _incomplete_gamma(alpha - 1, scaled)) / \
+           (e_g * theta * gamma(alpha))
+
+
+def mb_bremss_temp(theta, e_g, alpha=1.5, b=1.0):
+    """Maxwellian-electron produced bremsstrahlung effective temperature"""
+    # TODO: when e_g >> theta numerical convergence fails
+    scaled = e_g / theta
+    return (np.exp(scaled) * scaled * (
+        theta * _incomplete_gamma(alpha, scaled) - b * e_g * _incomplete_gamma(-1 + alpha, scaled))) / (
+               (1 - b) * scaled ** alpha + np.exp(scaled) * _incomplete_gamma(alpha, scaled))
+
+
+def mb_bremss_asympt_temp(theta, e_g, alpha=1.5, b=1.0):
+    """Maxwellian-electron produced bremsstrahlung effective temperature in the asymptotic approximation (1st order).
+
+    NOTE: The asymptotic expansion is only useful in the asymptotic limit. That is far beyond ten times kT.
+    """
+    scaled = e_g / theta
+    # The asymptotic expansion differs when b==1
+    if b == 1:
+        return theta * (1 + (alpha - 3) / scaled)
+    else:
+        return theta * (1 + (alpha - 2) / scaled)
+
+
+def bimb_bremss_temp(theta1, theta2, a1, e_g, alpha=1.5, b=1.0):
+    """Bimaxwellian-electron produced bremsstrahlung distribution according to a linear model of the scaled
+    bremsstrahlung cross-section"""
+    a2 = 1 - a1
+    f1 = a1 * mb_bremss(theta1, e_g, alpha=alpha, b=b)
+    f2 = a2 * mb_bremss(theta2, e_g, alpha=alpha, b=b)
+    f = f1 + f2
+    return 1 / (f1 / f / mb_bremss_temp(theta1, e_g, alpha=alpha, b=b) +
+                f2 / f / mb_bremss_temp(theta2, e_g, alpha=alpha, b=b))
