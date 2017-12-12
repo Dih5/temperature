@@ -153,3 +153,17 @@ def bimb_bremss_temp(theta1, theta2, a1, e_g, alpha=1.5, b=1.0):
     f = f1 + f2
     return 1 / (f1 / f / mb_bremss_temp(theta1, e_g, alpha=alpha, b=b) +
                 f2 / f / mb_bremss_temp(theta2, e_g, alpha=alpha, b=b))
+
+
+def mb_kramers_temp(theta, e_g, alpha=1.5):
+    """Maxwellian-electron produced bremsstrahlung distribution, according to the Kramer's thick target model"""
+    scaled = e_g / theta
+    return (theta * _incomplete_gamma(alpha + 1, scaled) - e_g * _incomplete_gamma(alpha, scaled)) / (
+    e_g * gamma(alpha))
+
+
+def mb_kramers_temp(theta, e_g, alpha=1.5):
+    """Maxwellian-electron produced bremsstrahlung effective temperature, according to the Kramer's thick target
+    model"""
+    scaled = e_g / theta
+    return e_g - (e_g ** 2 * _incomplete_gamma(alpha, scaled)) / (theta * _incomplete_gamma(1 + alpha, scaled))
