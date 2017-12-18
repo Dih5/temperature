@@ -124,7 +124,11 @@ def mb_bremss(theta, e_g, alpha=1.5, b=1.0):
 
 def mb_bremss_temp(theta, e_g, alpha=1.5, b=1.0):
     """Maxwellian-electron produced bremsstrahlung effective temperature"""
-    # TODO: when e_g >> theta numerical convergence fails
+    # TODO: when e_g >> theta (~25 times or so) numerical convergence fails.
+    # This is due to the quotient used. Perhaps previously simplified forms can be used when alpha is integer or
+    # semi-integer, at least for the b=1 case.
+    # This also affects the Kramer's model below.
+    # Nevertheless, I doubt such a high limit will ever be in consideration
     scaled = e_g / theta
     return (np.exp(scaled) * scaled * (
         theta * _incomplete_gamma(alpha, scaled) - b * e_g * _incomplete_gamma(-1 + alpha, scaled))) / (
