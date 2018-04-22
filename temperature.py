@@ -1,3 +1,4 @@
+"""Utilities for effective temperature-related calculations with energy distributions."""
 import numpy as np
 from scipy.stats import linregress
 from scipy.special import gamma, gammainc, expi
@@ -18,7 +19,8 @@ def eff_temperature(x, y, x_range=None, method="fit"):
         y: y-coordinates of the points.
         x_range: A 2-tuple defining an interval in x to filter the points.
         method: The method used to calculate the temperature. Available methods include:
-            *"fit": Best linear fit
+
+            - "fit": Best linear fit.
 
     Returns:
 
@@ -43,7 +45,8 @@ def eff_temperature_list(xx, yy, x_window, method="fit"):
         x_window (float or Callable): Half-size of the window used in each fit. It can be a Callable taking the window
                                       mean point and returning the halfsize.
         method: The method used to calculate the temperature. Available methods include:
-            *"fit": Best linear fit
+
+            - "fit": Best linear fit
 
     Returns:
 
