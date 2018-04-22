@@ -9,6 +9,9 @@ from scipy.interpolate import dfitpack, RectBivariateSpline
 from scipy.integrate import quad
 from functools import lru_cache
 
+import pickle
+from xpecgen.xpecgen import Spectrum  # Needed to unpickle the spectra
+
 data_path = path.join(path.dirname(path.abspath(__file__)), "data")
 
 
@@ -335,7 +338,7 @@ def get_cs(Z=74):
         scaled(np.log10(e_e), e_g / e_e))
 
 
-def f_mb_nist(theta, e, alpha=1.5, epsrel=1E-3):
+def f_mb_nist(theta, e, alpha=1.5, Z=74, epsrel=1E-3):
     """
     MB-electron produced bremsstrahlung distribution, according to the NIST tabulated cross-section.
 
@@ -343,11 +346,48 @@ def f_mb_nist(theta, e, alpha=1.5, epsrel=1E-3):
         theta(float): Temperature of the MB.
         e(float): Energy where the effective temperature is measured.
         alpha (float): Shape parameter of the distribution (half of the degrees of freedom).
+        Z (int): Atomic number of the medium.
         epsrel (float): Relative tolerance of the integral.
 
     Returns:
         float: The value of the probability density function in e.
-
     """
+    return quad(lambda x: gamma_dist.pdf(x, alpha, scale=theta) * get_cs(Z)(e, x), e, np.inf, epsrel=epsrel)[0]
 
-    return quad(lambda x: gamma_dist.pdf(x, alpha, scale=theta) * get_cs(74)(e, x), e, np.inf, epsrel=epsrel)[0]
+
+@lru_cache()
+def _get_simulated_xpecgen(Z=74):
+    electron_dist_x = np.arange(10, 600.1, 1)
+    mesh_points = np.concatenate(([0], (electron_dist_x[1:] + electron_dist_x[:-1]) / 2, [np.inf]))
+
+    if not path.isdir(path.join(data_path, "xpecgen", "%d" % Z)):
+        raise NotImplementedError("No precomputed calculations included and automatic calculation is not implemented")
+    s_list = []
+    for i, e_0 in enumerate(electron_dist_x, start=1):
+        with open(path.join(data_path, "xpecgen", "%d" % Z, "S%d.pkl" % i), 'rb') as f:
+            s_list.append(pickle.load(f))
+
+    return mesh_points, s_list
+
+
+def fmesh_mb_xpecgen(theta, alpha=1.5, Z=74):
+    """
+    MB-electron produced bremsstrahlung distribution, according to the xpecgen model.
+
+    Args:
+        theta(float): Temperature of the MB.
+        alpha (float): Shape parameter of the distribution (half of the degrees of freedom).
+        Z (int): Atomic number of the medium.
+
+    Returns:
+        (list of float, list of float): x coordinates and y coordinates of points defining the density function.
+    """
+    mesh_points, s_list = _get_simulated_xpecgen(Z)
+    electron_dist_y = [gamma_dist.cdf(e_1, alpha, scale=theta) - gamma_dist.cdf(e_0, alpha, scale=theta) for e_1, e_0 in
+                       zip(mesh_points[1:], mesh_points[:-1])]
+    s = sum([w * sp for sp, w in zip(s_list, electron_dist_y)])
+    # If we wanted to remove first and last:
+    # s = sum([w * sp for sp, w in zip(s_list[1:-1], electron_dist_y[1:-1])])
+    s.discrete = []
+    s.set_norm(1)
+    return s.x, s.y
