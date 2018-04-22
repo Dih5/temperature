@@ -30,7 +30,7 @@ def eff_temperature(x, y, x_range=None, method="fit"):
     else:
         x2, y2 = x, y
     if method == "fit":
-        return eff_temperature_fit(x2, y2)
+        return _eff_temperature_fit(x2, y2)
     else:
         raise ValueError("Unknown method: %s" % method)
 
@@ -60,27 +60,27 @@ def eff_temperature_list(xx, yy, x_window, method="fit"):
             for x in xx:
                 if x - x_window >= x_min and x + x_window <= x_max:
                     xx2.append(x)
-                    tt.append(eff_temperature_fit(*filter_points(xx, yy, x - x_window, x + x_window)))
+                    tt.append(_eff_temperature_fit(*filter_points(xx, yy, x - x_window, x + x_window)))
         else:  # Assumed callable
             for x in xx:
                 window = x_window(x)
                 if x - window >= x_min and x + window <= x_max:
                     xx2.append(x)
-                    tt.append(eff_temperature_fit(*filter_points(xx, yy, x - window, x + window)))
+                    tt.append(_eff_temperature_fit(*filter_points(xx, yy, x - window, x + window)))
         return xx2, tt
 
     else:
         raise ValueError("Unknown method: %s" % method)
 
 
-def linear_function(x0, y0, x1, y1):
+def _linear_function(x0, y0, x1, y1):
     """returns a linear function given two points"""
     a = (y0 - y1) / (x0 - x1)
     b = y0 - a * x0
     return lambda x: a * x + b
 
 
-def eff_temperature_fit(x, y):
+def _eff_temperature_fit(x, y):
     """Numerically find an effective temperature in the whole range given"""
     if not len(x) or len(x) != len(y):  # No points given or bad shape
         return np.nan
@@ -93,14 +93,14 @@ def eff_temperature_fit(x, y):
     return -1 / slope
 
 
-def finite_temperature_sym_dif_list(x, y, i=2):
+def _finite_temperature_sym_dif_list(x, y, i=2):
     """ Get a list of temperatures obtained by symmetric differences. i must be even"""
     log_y = np.log(np.array(y))
     x = np.array(x)
     return np.array(x[i // 2:-i // 2]), -(x[i:] - x[:-i]) / (log_y[i:] - log_y[:-i])
 
 
-def mb_temp(theta, e, alpha=1.5):
+def theta_mb(theta, e, alpha=1.5):
     """Effective temperature in a Maxwellian (Gamma) distribution"""
     scaled = e / theta
     return (scaled / (scaled + (alpha - 1))) * theta
@@ -117,7 +117,7 @@ def _incomplete_gamma(a, x):
         return -expi(-x)  # Assuming x>0
 
 
-def mb_bremss(theta, e_g, alpha=1.5, b=1.0):
+def f_mb_findlay(theta, e_g, alpha=1.5, b=1.0):
     """Maxwellian-electron produced bremsstrahlung distribution, according to a linear model of the scaled
     bremsstrahlung cross-section"""
     scaled = e_g / theta
@@ -125,7 +125,7 @@ def mb_bremss(theta, e_g, alpha=1.5, b=1.0):
            (e_g * theta * gamma(alpha))
 
 
-def mb_bremss_temp(theta, e_g, alpha=1.5, b=1.0):
+def theta_mb_findlay(theta, e_g, alpha=1.5, b=1.0):
     """Maxwellian-electron produced bremsstrahlung effective temperature"""
     # TODO: when e_g >> theta (~25 times or so) numerical convergence fails.
     # This is due to the quotient used. Perhaps previously simplified forms can be used when alpha is integer or
@@ -138,7 +138,7 @@ def mb_bremss_temp(theta, e_g, alpha=1.5, b=1.0):
                (1 - b) * scaled ** alpha + np.exp(scaled) * _incomplete_gamma(alpha, scaled))
 
 
-def mb_bremss_asympt_temp(theta, e_g, alpha=1.5, b=1.0):
+def theta_mb_findlay_asympt(theta, e_g, alpha=1.5, b=1.0):
     """Maxwellian-electron produced bremsstrahlung effective temperature in the asymptotic approximation (1st order).
 
     NOTE: The asymptotic expansion is only useful in the asymptotic limit. That is far beyond ten times kT.
@@ -151,26 +151,26 @@ def mb_bremss_asympt_temp(theta, e_g, alpha=1.5, b=1.0):
         return theta * (1 + (alpha - 2) / scaled)
 
 
-def bimb_bremss_temp(theta1, theta2, a1, e_g, alpha=1.5, b=1.0):
+def theta_bimb_findlay(theta1, theta2, a1, e_g, alpha=1.5, b=1.0):
     """Bimaxwellian-electron produced bremsstrahlung distribution according to a linear model of the scaled
     bremsstrahlung cross-section"""
     a2 = 1 - a1
-    f1 = a1 * mb_bremss(theta1, e_g, alpha=alpha, b=b)
-    f2 = a2 * mb_bremss(theta2, e_g, alpha=alpha, b=b)
+    f1 = a1 * f_mb_findlay(theta1, e_g, alpha=alpha, b=b)
+    f2 = a2 * f_mb_findlay(theta2, e_g, alpha=alpha, b=b)
     f = f1 + f2
-    return 1 / (f1 / f / mb_bremss_temp(theta1, e_g, alpha=alpha, b=b) +
-                f2 / f / mb_bremss_temp(theta2, e_g, alpha=alpha, b=b))
+    return 1 / (f1 / f / theta_mb_findlay(theta1, e_g, alpha=alpha, b=b) +
+                f2 / f / theta_mb_findlay(theta2, e_g, alpha=alpha, b=b))
 
 
-def mb_kramers(theta, e_g, alpha=1.5):
-    """Maxwellian-electron produced bremsstrahlung distribution, according to the Kramer's thick target model"""
+def f_mb_kramers(theta, e_g, alpha=1.5):
+    """Maxwellian-electron produced bremsstrahlung distribution, according to the Kramers' thick target model"""
     scaled = e_g / theta
     return (theta * _incomplete_gamma(alpha + 1, scaled) - e_g * _incomplete_gamma(alpha, scaled)) / (
     e_g * gamma(alpha))
 
 
-def mb_kramers_temp(theta, e_g, alpha=1.5):
-    """Maxwellian-electron produced bremsstrahlung effective temperature, according to the Kramer's thick target
+def theta_mb_kramers(theta, e_g, alpha=1.5):
+    """Maxwellian-electron produced bremsstrahlung effective temperature, according to the Kramers' thick target
     model"""
     scaled = e_g / theta
     return e_g - (e_g ** 2 * _incomplete_gamma(alpha, scaled)) / (theta * _incomplete_gamma(1 + alpha, scaled))
