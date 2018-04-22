@@ -1,7 +1,15 @@
 """Utilities for effective temperature-related calculations with energy distributions."""
+from os import path
+
 import numpy as np
-from scipy.stats import linregress
+from scipy.stats import linregress, gamma as gamma_dist
 from scipy.special import gamma, gammainc, expi
+import csv
+from scipy.interpolate import dfitpack, RectBivariateSpline
+from scipy.integrate import quad
+from functools import lru_cache
+
+data_path = path.join(path.dirname(path.abspath(__file__)), "data")
 
 
 def filter_points(xx, yy, x_min, x_max):
@@ -274,3 +282,72 @@ def theta_mb_kramers(theta, e, alpha=1.5):
     """
     scaled = e / theta
     return e - (e ** 2 * _incomplete_gamma(alpha, scaled)) / (theta * _incomplete_gamma(1 + alpha, scaled))
+
+
+def _singlify(rect_bivariate_spline):
+    """Alter a RectBivariateSpline so its call skips matrix transformation and derivative checks.
+    Single evaluation is about 100% faster
+    Calling in quad seems only about 5% faster"""
+    tx, ty, c = rect_bivariate_spline.tck[:3]
+    kx, ky = rect_bivariate_spline.degrees
+
+    def call(self, x, y):
+        """
+        Altered to evaluate at a single position, no derivatives.
+        """
+        z, ier = dfitpack.bispev(tx, ty, c, kx, ky, x, y)
+        if not ier == 0:
+            raise ValueError("Error code returned by bispev: %s" % ier)
+        return z[0, 0]
+
+    meths = {'__call__': call}
+    rect_bivariate_spline.__class__ = type('PatchedRectBivariateSpline', (RectBivariateSpline,), meths)
+
+
+@lru_cache()
+def get_cs(Z=74):
+    """
+    Returns a function representing the bremsstrahlung cross_section.
+
+    Returns:
+        A function representing cross_section(e_g,e_e) in mb/keV, with e_g and e_e in keV.
+    """
+    # NOTE: Data is given for E_e>1keV. CS values below this level should be used with caution.
+    # The default behaviour is to keep it constant
+    with open(path.join(data_path, "cs", "grid.csv"), 'r') as csvfile:
+        r = csv.reader(csvfile, delimiter=' ')
+        t = next(r)
+        e_e = np.array([float(a) for a in t[0].split(",")])
+        log_e_e = np.log10(e_e)
+        t = next(r)
+        k = np.array([float(a) for a in t[0].split(",")])
+    t = []
+    with open(path.join(data_path, "cs", "%d.csv" % Z), 'r') as csvfile:
+        r = csv.reader(csvfile, delimiter=' ')
+        for row in r:
+            t.append([float(a) for a in row[0].split(",")])
+    t = np.array(t)
+    scaled = RectBivariateSpline(log_e_e, k, t, kx=3, ky=1)
+    _singlify(scaled)
+    electron_mass = 511
+    z_2 = Z * Z
+    return lambda e_g, e_e: (e_e + electron_mass) ** 2 * z_2 / (e_e * e_g * (e_e + 2 * electron_mass)) * (
+        scaled(np.log10(e_e), e_g / e_e))
+
+
+def f_mb_nist(theta, e, alpha=1.5, epsrel=1E-3):
+    """
+    MB-electron produced bremsstrahlung distribution, according to the NIST tabulated cross-section.
+
+    Args:
+        theta(float): Temperature of the MB.
+        e(float): Energy where the effective temperature is measured.
+        alpha (float): Shape parameter of the distribution (half of the degrees of freedom).
+        epsrel (float): Relative tolerance of the integral.
+
+    Returns:
+        float: The value of the probability density function in e.
+
+    """
+
+    return quad(lambda x: gamma_dist.pdf(x, alpha, scale=theta) * get_cs(74)(e, x), e, np.inf, epsrel=epsrel)[0]
