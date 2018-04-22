@@ -5,32 +5,45 @@ from scipy.special import gamma, gammainc, expi
 
 
 def filter_points(xx, yy, x_min, x_max):
-    """Select points where between x_min <= x <= x_max"""
+    """
+    Select points where x_min <= x <= x_max.
+
+    Args:
+        xx (list of float): X-coordinates.
+        yy (list of float): Y coordinates.
+        x_min (float): Minimum x-coordinate.
+        x_max (float): Maximum x-coordinate accepted.
+
+    Returns:
+        (list of float, list of float): The lists of coordinates of the points selected.
+
+    """
     temp = list(map(list, zip(*filter(lambda t: x_min <= t[0] <= x_max, zip(xx, yy)))))
     return temp if temp else ([], [])
 
 
-def eff_temperature(x, y, x_range=None, method="fit"):
+def eff_temperature(xx, yy, x_range=None, method="fit"):
     """
     Find an effective temperature of data points, possibly in a given range.
 
     Args:
-        x: x-coordinates of the points.
-        y: y-coordinates of the points.
+        xx: x-coordinates of the points.
+        yy: y-coordinates of the points.
         x_range: A 2-tuple defining an interval in x to filter the points.
         method: The method used to calculate the temperature. Available methods include:
 
             - "fit": Best linear fit.
 
     Returns:
+        float: The value of the effective temperature.
 
     """
     if x_range:
-        x2, y2 = filter_points(x, y, x_range[0], x_range[1])
+        xx2, yy2 = filter_points(xx, yy, x_range[0], x_range[1])
     else:
-        x2, y2 = x, y
+        xx2, yy2 = xx, yy
     if method == "fit":
-        return _eff_temperature_fit(x2, y2)
+        return _eff_temperature_fit(xx2, yy2)
     else:
         raise ValueError("Unknown method: %s" % method)
 
@@ -40,13 +53,13 @@ def eff_temperature_list(xx, yy, x_window, method="fit"):
     Find points describing the effective temperature function using a certain window.
 
     Args:
-        x: x-coordinates of the points.
-        y: y-coordinates of the points.
+        xx: x-coordinates of the points.
+        yy: y-coordinates of the points.
         x_window (float or Callable): Half-size of the window used in each fit. It can be a Callable taking the window
-                                      mean point and returning the halfsize.
+                                      mean point and returning the half-size.
         method: The method used to calculate the temperature. Available methods include:
 
-            - "fit": Best linear fit
+            - "fit": Best linear fit.
 
     Returns:
 
@@ -95,13 +108,27 @@ def _eff_temperature_fit(x, y):
 
 def _finite_temperature_sym_dif_list(x, y, i=2):
     """ Get a list of temperatures obtained by symmetric differences. i must be even"""
+    # TODO: Add public interface (?)
+    if i % 2:
+        raise ValueError("i must be even")
     log_y = np.log(np.array(y))
     x = np.array(x)
     return np.array(x[i // 2:-i // 2]), -(x[i:] - x[:-i]) / (log_y[i:] - log_y[:-i])
 
 
 def theta_mb(theta, e, alpha=1.5):
-    """Effective temperature in a Maxwellian (Gamma) distribution"""
+    """
+    Effective temperature in a Maxwell-Boltzmann (Gamma) distribution
+
+    Args:
+        theta(float): Temperature of the MB.
+        e(float): Energy where the effective temperature is measured.
+        alpha: Shape parameter of the distribution (half of the degrees of freedom).
+
+    Returns:
+        float: The effective temperature.
+
+    """
     scaled = e / theta
     return (scaled / (scaled + (alpha - 1))) * theta
 
@@ -117,33 +144,71 @@ def _incomplete_gamma(a, x):
         return -expi(-x)  # Assuming x>0
 
 
-def f_mb_findlay(theta, e_g, alpha=1.5, b=1.0):
-    """Maxwellian-electron produced bremsstrahlung distribution, according to a linear model of the scaled
-    bremsstrahlung cross-section"""
-    scaled = e_g / theta
-    return (theta * _incomplete_gamma(alpha, scaled) - b * e_g * _incomplete_gamma(alpha - 1, scaled)) / \
-           (e_g * theta * gamma(alpha))
+def f_mb_findlay(theta, e, alpha=1.5, b=1.0):
+    """
+    MB-electron produced bremsstrahlung distribution, according to a linear model of the scaled
+    bremsstrahlung scaled cross-section (Findlay's).
+
+    Args:
+        theta(float): Temperature of the MB.
+        e(float): Energy where the effective temperature is measured.
+        alpha (float): Shape parameter of the distribution (half of the degrees of freedom).
+        b (float): Parameter of the cross-section model. Should be in [0, 1].
+
+    Returns:
+        float: The value of the probability density function in e.
+
+    """
+    scaled = e / theta
+    return (theta * _incomplete_gamma(alpha, scaled) - b * e * _incomplete_gamma(alpha - 1, scaled)) / \
+           (e * theta * gamma(alpha))
 
 
-def theta_mb_findlay(theta, e_g, alpha=1.5, b=1.0):
-    """Maxwellian-electron produced bremsstrahlung effective temperature"""
+def theta_mb_findlay(theta, e, alpha=1.5, b=1.0):
+    """
+        MB-electron produced bremsstrahlung effective temperature, according to a linear model of the scaled
+        bremsstrahlung scaled cross-section (Findlay's).
+
+        Args:
+            theta(float): Temperature of the MB.
+            e(float): Energy where the effective temperature is measured.
+            alpha (float): Shape parameter of the distribution (half of the degrees of freedom).
+            b (float): Parameter of the cross-section model. Should be in [0, 1].
+
+        Returns:
+            float: The effective temperature.
+
+    """
     # TODO: when e_g >> theta (~25 times or so) numerical convergence fails.
     # This is due to the quotient used. Perhaps previously simplified forms can be used when alpha is integer or
     # semi-integer, at least for the b=1 case.
     # This also affects the Kramer's model below.
     # Nevertheless, I doubt such a high limit will ever be in consideration
-    scaled = e_g / theta
+    scaled = e / theta
     return (np.exp(scaled) * scaled * (
-        theta * _incomplete_gamma(alpha, scaled) - b * e_g * _incomplete_gamma(-1 + alpha, scaled))) / (
-               (1 - b) * scaled ** alpha + np.exp(scaled) * _incomplete_gamma(alpha, scaled))
+            theta * _incomplete_gamma(alpha, scaled) - b * e * _incomplete_gamma(-1 + alpha, scaled))) / (
+                   (1 - b) * scaled ** alpha + np.exp(scaled) * _incomplete_gamma(alpha, scaled))
 
 
-def theta_mb_findlay_asympt(theta, e_g, alpha=1.5, b=1.0):
-    """Maxwellian-electron produced bremsstrahlung effective temperature in the asymptotic approximation (1st order).
-
-    NOTE: The asymptotic expansion is only useful in the asymptotic limit. That is far beyond ten times kT.
+def theta_mb_findlay_asympt(theta, e, alpha=1.5, b=1.0):
     """
-    scaled = e_g / theta
+        MB-electron produced bremsstrahlung effective temperature , according to a linear model of the scaled
+        bremsstrahlung scaled cross-section (Findlay's) in the the asymptotic approximation (1st order).
+
+        Args:
+            theta(float): Temperature of the MB.
+            e(float): Energy where the effective temperature is measured.
+            alpha (float): Shape parameter of the distribution (half of the degrees of freedom).
+            b (float): Parameter of the cross-section model. Should be in [0, 1].
+
+        Returns:
+            float: The effective temperature.
+
+        Note:
+            The asymptotic expansion is only useful in the asymptotic limit. That is far beyond ten times kT.
+
+    """
+    scaled = e / theta
     # The asymptotic expansion differs when b==1
     if b == 1:
         return theta * (1 + (alpha - 3) / scaled)
@@ -151,26 +216,61 @@ def theta_mb_findlay_asympt(theta, e_g, alpha=1.5, b=1.0):
         return theta * (1 + (alpha - 2) / scaled)
 
 
-def theta_bimb_findlay(theta1, theta2, a1, e_g, alpha=1.5, b=1.0):
-    """Bimaxwellian-electron produced bremsstrahlung distribution according to a linear model of the scaled
-    bremsstrahlung cross-section"""
+def theta_bimb_findlay(theta1, theta2, a1, e, alpha=1.5, b=1.0):
+    """
+        Bi-MB-electron produced bremsstrahlung effective temperature, according to a linear model of the scaled
+        bremsstrahlung scaled cross-section (Findlay's).
+
+        Args:
+            theta1(float): Temperature of the first component of the MB.
+            theta2(float): Temperature of the second component of the MB.
+            a1(float): Weight of the first component in the convex combination.
+            e(float): Energy where the effective temperature is measured.
+            alpha (float): Shape parameter of the distributions (half of the degrees of freedom).
+            b (float): Parameter of the cross-section model. Should be in [0, 1].
+
+        Returns:
+            float: The effective temperature in e.
+
+    """
     a2 = 1 - a1
-    f1 = a1 * f_mb_findlay(theta1, e_g, alpha=alpha, b=b)
-    f2 = a2 * f_mb_findlay(theta2, e_g, alpha=alpha, b=b)
+    f1 = a1 * f_mb_findlay(theta1, e, alpha=alpha, b=b)
+    f2 = a2 * f_mb_findlay(theta2, e, alpha=alpha, b=b)
     f = f1 + f2
-    return 1 / (f1 / f / theta_mb_findlay(theta1, e_g, alpha=alpha, b=b) +
-                f2 / f / theta_mb_findlay(theta2, e_g, alpha=alpha, b=b))
+    return 1 / (f1 / f / theta_mb_findlay(theta1, e, alpha=alpha, b=b) +
+                f2 / f / theta_mb_findlay(theta2, e, alpha=alpha, b=b))
 
 
-def f_mb_kramers(theta, e_g, alpha=1.5):
-    """Maxwellian-electron produced bremsstrahlung distribution, according to the Kramers' thick target model"""
-    scaled = e_g / theta
-    return (theta * _incomplete_gamma(alpha + 1, scaled) - e_g * _incomplete_gamma(alpha, scaled)) / (
-    e_g * gamma(alpha))
+def f_mb_kramers(theta, e, alpha=1.5):
+    """
+    MB-electron produced bremsstrahlung distribution, according to to the Kramers' thick target model.
+
+    Args:
+        theta(float): Temperature of the MB.
+        e(float): Energy where the effective temperature is measured.
+        alpha (float): Shape parameter of the distribution (half of the degrees of freedom).
+
+    Returns:
+        float: The value of the probability density function in e.
+
+    """
+    scaled = e / theta
+    return (theta * _incomplete_gamma(alpha + 1, scaled) - e * _incomplete_gamma(alpha, scaled)) / (
+            e * gamma(alpha))
 
 
-def theta_mb_kramers(theta, e_g, alpha=1.5):
-    """Maxwellian-electron produced bremsstrahlung effective temperature, according to the Kramers' thick target
-    model"""
-    scaled = e_g / theta
-    return e_g - (e_g ** 2 * _incomplete_gamma(alpha, scaled)) / (theta * _incomplete_gamma(1 + alpha, scaled))
+def theta_mb_kramers(theta, e, alpha=1.5):
+    """
+        MB-electron produced bremsstrahlung effective temperature, according to to the Kramers' thick target model.
+
+        Args:
+            theta(float): Temperature of the MB.
+            e(float): Energy where the effective temperature is measured.
+            alpha (float): Shape parameter of the distribution (half of the degrees of freedom).
+
+        Returns:
+            float: The value of the effective temperature in e.
+
+    """
+    scaled = e / theta
+    return e - (e ** 2 * _incomplete_gamma(alpha, scaled)) / (theta * _incomplete_gamma(1 + alpha, scaled))
