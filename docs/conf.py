@@ -21,6 +21,21 @@
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
+# Mock the needed packages on RTD
+# http://docs.readthedocs.io/en/latest/faq.html#i-get-import-errors-on-libraries-that-depend-on-c-modules
+on_rtd = os.environ.get('READTHEDOCS') == 'True'
+if on_rtd:
+    from unittest.mock import MagicMock
+
+
+    class Mock(MagicMock):
+        @classmethod
+        def __getattr__(cls, name):
+            return MagicMock()
+
+    MOCK_MODULES = ['numpy', 'scipy', 'scipy.stats', 'scipy.special', 'scipy.interpolate', 'scipy.integrate', 'xpecgen', 'xpecgen.xpecgen']
+    sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
+
 
 # -- General configuration ------------------------------------------------
 
